@@ -33,7 +33,8 @@
 #include "mess_mem_ctrl.h"
 
 // Custom round function to avoid dependency issues
-static double roundDouble(double d) {
+static double roundDouble(double d)
+{
     return std::floor(d + 0.5);
 }
 
@@ -51,31 +52,24 @@ static double roundDouble(double d) {
  * @param frequencyRate CPU frequency in GHz.
  * @param _onCoreLatency Additional latency (in cycles) from the core to the memory controller.
  */
-MessMemCtrl::MessMemCtrl(const std::string& _curveAddress,
-                           uint32_t _curveWindowSize, double frequencyRate, double _onCoreLatency)
-    : curveAddress(_curveAddress),
-      curveWindowSize(_curveWindowSize),
-      frequencyCPU(frequencyRate),
-      onCoreLatency(_onCoreLatency),
-      leadOffLatency(100000), // Initialize with a large value; will be updated later
-      maxBandwidth(0),
-      maxLatency(0),
-      currentWindowAccessCount(0),
-      currentWindowAccessCount_wr(0),
-      currentWindowAccessCount_rd(0),
-      lastEstimatedBandwidth(0),
-      lastEstimatedLatency(leadOffLatency),
-      latency(static_cast<uint32_t>(leadOffLatency)),
-      overflowFactor(0),
-      lastIntReadPercentage(0) {
+MessMemCtrl::MessMemCtrl(const std::string &_curveAddress, uint32_t _curveWindowSize, double frequencyRate,
+                         double _onCoreLatency)
+    : curveAddress(_curveAddress), curveWindowSize(_curveWindowSize), frequencyCPU(frequencyRate),
+      onCoreLatency(_onCoreLatency), leadOffLatency(100000), // Initialize with a large value; will be updated later
+      maxBandwidth(0), maxLatency(0), currentWindowAccessCount(0), currentWindowAccessCount_wr(0),
+      currentWindowAccessCount_rd(0), lastEstimatedBandwidth(0), lastEstimatedLatency(leadOffLatency),
+      latency(static_cast<uint32_t>(leadOffLatency)), overflowFactor(0), lastIntReadPercentage(0)
+{
     // Load curve data for 101 different read percentages: 0%, 2%, ..., 100%
-    for (uint32_t i = 0; i <= 100; i += 2) {
+    for (uint32_t i = 0; i <= 100; i += 2)
+    {
         // Generate the file path for the current read percentage
         std::string fileAddress = curveAddress + "/bwlat_" + std::to_string(i) + ".txt";
         std::ifstream curveFile(fileAddress);
 
         // Check if the file was successfully opened
-        if (!curveFile.is_open()) {
+        if (!curveFile.is_open())
+        {
             std::cerr << "Failed to open curve file: " << fileAddress << std::endl;
             continue;
         }
@@ -88,7 +82,8 @@ MessMemCtrl::MessMemCtrl(const std::string& _curveAddress,
         double inputBandwidth, inputLatency;
 
         // Read the curve data from the file
-        while (curveFile >> inputBandwidth >> inputLatency) {
+        while (curveFile >> inputBandwidth >> inputLatency)
+        {
             // Convert bandwidth from MB/s to accesses per cycle
             // Assuming each access is 64 bytes
             inputBandwidth = (inputBandwidth / 64) / (frequencyCPU * 1000);
@@ -130,6 +125,8 @@ MessMemCtrl::MessMemCtrl(const std::string& _curveAddress,
         // Close the curve file
         curveFile.close();
     }
+    latency = static_cast<uint32_t>(leadOffLatency);
+    lastEstimatedLatency = leadOffLatency;
 }
 
 /**
@@ -140,11 +137,11 @@ MessMemCtrl::MessMemCtrl(const std::string& _curveAddress,
  *
  * @return Lead-off latency in cycles.
  */
-uint32_t MessMemCtrl::getLeadOffLatency() {
+uint32_t MessMemCtrl::getLeadOffLatency()
+{
     // Return the minimum achievable latency for memory access
     return static_cast<uint32_t>(leadOffLatency);
 }
-
 
 /**
  * @brief Searches for the appropriate latency given a measured bandwidth and read percentage.
@@ -159,7 +156,8 @@ uint32_t MessMemCtrl::getLeadOffLatency() {
  * @param readPercentage Fraction of accesses that are reads, from 0.0 to 1.0.
  * @return Estimated latency in cycles for the given bandwidth and read percentage.
  */
-uint32_t MessMemCtrl::searchForLatencyOnCurve(double bandwidth, double readPercentage) {
+uint32_t MessMemCtrl::searchForLatencyOnCurve(double bandwidth, double readPercentage)
+{
     const double convergeSpeed = 0.05; // Convergence factor for PID-like controller
 
     // Convert read percentage to an even integer between 0 and 100
@@ -181,10 +179,10 @@ uint32_t MessMemCtrl::searchForLatencyOnCurve(double bandwidth, double readPerce
     bandwidth = convergeSpeed * bandwidth + (1 - convergeSpeed) * lastEstimatedBandwidth;
 
     // Check if the bandwidth exceeds the maximum allowed for the current read percentage
-    if (maxBandwidthPerRdRatio[curveDataIndex] * 0.99 < bandwidth) {
+    if (maxBandwidthPerRdRatio[curveDataIndex] * 0.99 < bandwidth)
+    {
         // Limit the bandwidth to the maximum and apply a weighted average
-        finalBW = convergeSpeed * maxBandwidthPerRdRatio[curveDataIndex] +
-                  (1 - convergeSpeed) * lastEstimatedBandwidth;
+        finalBW = convergeSpeed * maxBandwidthPerRdRatio[curveDataIndex] + (1 - convergeSpeed) * lastEstimatedBandwidth;
 
         // Increase overflow factor to simulate latency penalty for high bandwidth
         overflowFactor += 0.02;
@@ -208,17 +206,23 @@ uint32_t MessMemCtrl::searchForLatencyOnCurve(double bandwidth, double readPerce
 
     // Find the appropriate latency corresponding to the current bandwidth
     uint32_t j;
-    for (j = 0; j < curves_data[curveDataIndex].size(); ++j) {
-        if (finalBW == 0) {
+    for (j = 0; j < curves_data[curveDataIndex].size(); ++j)
+    {
+        if (finalBW == 0)
+        {
             // Initialize finalBW and finalLatency with the first data point
             finalBW = curves_data[curveDataIndex][j][0];
             finalLatency = curves_data[curveDataIndex][j][1];
         }
-        if (curves_data[curveDataIndex][j][0] >= bandwidth) {
-            // Update finalBW and finalLatency if the curve's bandwidth is greater than or equal to the current bandwidth
+        if (curves_data[curveDataIndex][j][0] >= bandwidth)
+        {
+            // Update finalBW and finalLatency if the curve's bandwidth is greater than or equal to the current
+            // bandwidth
             finalBW = curves_data[curveDataIndex][j][0];
             finalLatency = curves_data[curveDataIndex][j][1];
-        } else {
+        }
+        else
+        {
             // Break the loop when we find a bandwidth less than the current bandwidth
             break;
         }
@@ -228,7 +232,8 @@ uint32_t MessMemCtrl::searchForLatencyOnCurve(double bandwidth, double readPerce
     if (j == curves_data[curveDataIndex].size())
         j--;
 
-    if (j != 0) { // Not at the first data point (highest bandwidth)
+    if (j != 0)
+    { // Not at the first data point (highest bandwidth)
         // Perform linear interpolation between two data points to estimate the latency
         double x1 = curves_data[curveDataIndex][j][0];
         double y1 = curves_data[curveDataIndex][j][1];
@@ -248,7 +253,9 @@ uint32_t MessMemCtrl::searchForLatencyOnCurve(double bandwidth, double readPerce
         // Decrease overflow factor if not in overflow mode
         if (overflowFactor > 0.01)
             overflowFactor -= 0.01;
-    } else {
+    }
+    else
+    {
         // At the first data point; use the current finalLatency
         finalLatency += overflowFactor * finalLatency;
         finalLatency = convergeSpeed * finalLatency + (1 - convergeSpeed) * lastEstimatedLatency;
@@ -274,7 +281,6 @@ uint32_t MessMemCtrl::searchForLatencyOnCurve(double bandwidth, double readPerce
     return static_cast<uint32_t>(finalLatency);
 }
 
-
 /**
  * @brief Updates the latency at the end of a measurement window.
  *
@@ -284,15 +290,15 @@ uint32_t MessMemCtrl::searchForLatencyOnCurve(double bandwidth, double readPerce
  *
  * @param currentWindowEndCycle The cycle number at which the current measurement window ends.
  */
-void MessMemCtrl::updateLatency(uint64_t currentWindowEndCycle) {
+void MessMemCtrl::updateLatency(uint64_t currentWindowEndCycle)
+{
     // Calculate bandwidth in accesses per cycle
     double bandwidth =
         static_cast<double>(currentWindowAccessCount) / (currentWindowEndCycle - currentWindowStartCycle);
 
     // Calculate read percentage
     double readPercentage =
-        static_cast<double>(currentWindowAccessCount_rd) /
-        (currentWindowAccessCount_rd + currentWindowAccessCount_wr);
+        static_cast<double>(currentWindowAccessCount_rd) / (currentWindowAccessCount_rd + currentWindowAccessCount_wr);
 
     // Update latency based on the calculated bandwidth and read percentage
     latency = searchForLatencyOnCurve(bandwidth, readPercentage);
@@ -312,22 +318,28 @@ void MessMemCtrl::updateLatency(uint64_t currentWindowEndCycle) {
  * @param isWrite True if the access is a write, false if it is a read.
  * @return Latency in cycles for this access.
  */
-uint64_t MessMemCtrl::access(uint64_t accessCycle, bool isWrite) {
+uint64_t MessMemCtrl::access(uint64_t accessCycle, bool isWrite)
+{
     // Start cycle of the measurement window
-    if (currentWindowAccessCount == 0) {
+    if (currentWindowAccessCount == 0)
+    {
         currentWindowStartCycle = accessCycle;
     }
 
     // Increment access counts
     currentWindowAccessCount++;
-    if (isWrite) {
+    if (isWrite)
+    {
         currentWindowAccessCount_wr++;
-    } else {
+    }
+    else
+    {
         currentWindowAccessCount_rd++;
     }
 
     // Check if we've reached the end of the measurement window
-    if (currentWindowAccessCount == curveWindowSize) {
+    if (currentWindowAccessCount == curveWindowSize)
+    {
         // Update latency based on the current window's statistics
         updateLatency(accessCycle);
 
@@ -351,7 +363,8 @@ uint64_t MessMemCtrl::access(uint64_t accessCycle, bool isWrite) {
  * @return The latency penalty in cycles if current latency exceeds max latency,
  *         otherwise 0.
  */
-uint64_t MessMemCtrl::GetQsMemLoadCycleLimit() {
+uint64_t MessMemCtrl::GetQsMemLoadCycleLimit()
+{
     // Calculate the index for the current read percentage
     uint32_t curveDataIndex = lastIntReadPercentage / 2;
 
