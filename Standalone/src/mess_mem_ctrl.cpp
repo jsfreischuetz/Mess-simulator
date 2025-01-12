@@ -307,6 +307,17 @@ void MessMemCtrl::updateLatency(uint64_t currentWindowEndCycle)
     assert(latency >= 0);
 }
 
+void MessMemCtrl::force_latency_update(uint64_t accessCycle)
+{
+    if (currentWindowAccessCount != 0)
+    {
+        updateLatency(accessCycle);
+        currentWindowAccessCount = 0;
+        currentWindowAccessCount_wr = 0;
+        currentWindowAccessCount_rd = 0;
+    }
+}
+
 /**
  * @brief Simulates a memory access at a given cycle and returns its latency.
  *
